@@ -12,6 +12,7 @@ React layer over [`@sodax/wallet-sdk-core`](https://github.com/gosodax/sodax-sdk
 - **Headless wallet modal** — `useWalletModal` state machine (chainSelect → walletSelect → connecting → success | error), render-agnostic
 - **Batch operations** — connect/disconnect every chain a wallet identifier covers, in sequence
 - **WalletConnect** — opt-in for enterprise custody (Fireblocks, etc.) via `config.EVM.walletConnect`
+- **Extra Stellar wallets** — offer a Stellar Wallets Kit module next to the built-in Stellar wallets via `config.STELLAR.modules`, or after mount with `addStellarWalletModules` / `removeStellarWalletModules` from `@sodax/wallet-sdk-react/xchains/stellar` (see [Connectors](https://github.com/gosodax/sodax-sdks/blob/main/packages/wallet-sdk-react/docs/CONNECTORS.md#extra-stellar-wallets-kit-modules))
 - **Email login (Privy)** — opt-in "Email (Privy)" EVM wallet via `config.EVM.privy` and `@sodax/wallet-sdk-react/privy`; needs `@privy-io/react-auth` 3.40+ (an optional peer — partners who skip it install nothing). The wallet is custodied by Privy: no signing while Privy is unreachable, addresses belong to your Privy app, a user who loses their email loses the wallet, and your Privy app is billed per signature. Read the [Privy guide](https://github.com/gosodax/sodax-sdks/blob/main/packages/wallet-sdk-react/docs/WALLET_PRIVY.md) before enabling it.
 
 ## Installation

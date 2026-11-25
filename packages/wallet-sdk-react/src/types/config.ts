@@ -38,6 +38,7 @@ import type {
   ZcashWalletDefaults,
   CardanoWalletDefaults,
 } from '@sodax/wallet-sdk-core';
+import type { ModuleInterface } from '@creit.tech/stellar-wallets-kit';
 import type { State as WagmiState } from 'wagmi';
 import type { WalletConnectParameters } from 'wagmi/connectors';
 import type { IXConnector } from './interfaces.js';
@@ -132,6 +133,16 @@ export type TonAdapterFields = {
   manifestUrl?: string;
 };
 
+/** Stellar Wallets Kit settings. */
+export type StellarAdapterFields = {
+  /**
+   * Extra Stellar Wallets Kit modules, offered next to the kit's built-in wallets (`allowAllModules()`). A module
+   * whose `productId` is already present is ignored. To add or remove a module after `SodaxWalletProvider` has
+   * mounted, use `addStellarWalletModules` / `removeStellarWalletModules`.
+   */
+  modules?: ModuleInterface[];
+};
+
 /** `@mysten/dapp-kit-react` provider settings. */
 export type SuiAdapterFields = {
   autoConnect?: boolean;
@@ -159,7 +170,12 @@ export type ChainMeta = {
   SUI: { keys: SuiChainKey; entry: SuiChainEntry; defaults: SuiWalletDefaults; adapter: SuiAdapterFields };
   ICON: { keys: IconChainKey; entry: IconChainEntry; defaults: IconWalletDefaults; adapter: {} };
   NEAR: { keys: NearChainKey; entry: NearChainEntry; defaults: NearWalletDefaults; adapter: {} };
-  STELLAR: { keys: StellarChainKey; entry: StellarChainEntry; defaults: StellarWalletDefaults; adapter: {} };
+  STELLAR: {
+    keys: StellarChainKey;
+    entry: StellarChainEntry;
+    defaults: StellarWalletDefaults;
+    adapter: StellarAdapterFields;
+  };
   BITCOIN: { keys: BitcoinChainKey; entry: BitcoinChainEntry; defaults: BitcoinWalletDefaults; adapter: {} };
   INJECTIVE: { keys: InjectiveChainKey; entry: InjectiveChainEntry; defaults: InjectiveWalletDefaults; adapter: {} };
   STACKS: { keys: StacksChainKey; entry: StacksChainEntry; defaults: StacksWalletDefaults; adapter: {} };

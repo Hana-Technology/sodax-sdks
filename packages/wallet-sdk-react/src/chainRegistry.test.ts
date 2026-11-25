@@ -544,13 +544,42 @@ describe('chainRegistry — rpcUrl/network forwarding to XService.getInstance', 
         },
       },
     });
-    expect(spy).toHaveBeenCalledWith('https://horizon.example', 'https://soroban.example');
+    expect(spy).toHaveBeenCalledWith('https://horizon.example', 'https://soroban.example', undefined);
   });
 
   it('STELLAR.createService passes (undefined, undefined) when STELLAR_MAINNET entry omitted', () => {
     const spy = vi.spyOn(StellarXService, 'getInstance').mockReturnValue({} as never);
     getChainEntry('STELLAR').createService({ STELLAR: {} });
-    expect(spy).toHaveBeenCalledWith(undefined, undefined);
+    expect(spy).toHaveBeenCalledWith(undefined, undefined, undefined);
+  });
+
+  it('STELLAR.discoverConnectors lets only the latest run write the connector list', async () => {
+    const wallet = (id: string) => ({ id, name: id, type: 'HOT_WALLET', icon: '', url: '', isAvailable: true });
+    let releaseFirst: (wallets: unknown[]) => void = () => {};
+    const firstScan = new Promise<unknown[]>(resolve => {
+      releaseFirst = resolve;
+    });
+    const getSupportedWallets = vi.fn().mockReturnValueOnce(firstScan).mockResolvedValue([wallet('new-wallet')]);
+    const service = { walletsKit: { getSupportedWallets }, setXConnectors: vi.fn() };
+    const setXConnectors = vi.fn();
+    const getStore = vi.fn(() => ({ setXConnectors })) as unknown as StoreAccessor;
+    const discover = getChainEntry('STELLAR').discoverConnectors;
+    if (!discover) throw new Error('expected STELLAR.discoverConnectors');
+
+    const first = discover(service as never, getStore);
+    await discover(service as never, getStore);
+    releaseFirst([wallet('old-wallet')]);
+    await first;
+
+    const written = setXConnectors.mock.calls.map(([, connectors]) => connectors.map((c: XConnector) => c.id));
+    expect(written).toEqual([['new-wallet']]);
+  });
+
+  it('STELLAR.createService passes STELLAR.modules to StellarXService.getInstance', () => {
+    const spy = vi.spyOn(StellarXService, 'getInstance').mockReturnValue({} as never);
+    const modules = [{ productId: 'extra-wallet' }] as never;
+    getChainEntry('STELLAR').createService({ STELLAR: { modules } });
+    expect(spy).toHaveBeenCalledWith(undefined, undefined, modules);
   });
 
   it('ICON.createService passes ICON_MAINNET.rpcUrl to IconXService.getInstance', () => {

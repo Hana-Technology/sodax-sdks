@@ -11,6 +11,7 @@ import {
   nativeToScVal,
   type rpc,
 } from '@stellar/stellar-sdk';
+import { ModuleType, type ModuleInterface } from '@creit.tech/stellar-wallets-kit';
 import { StellarXService } from './StellarXService.js';
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
@@ -263,5 +264,76 @@ describe('Stellar trustline config', () => {
       .map(xToken => xToken.symbol);
 
     expect(nonCanonical).toEqual([]);
+  });
+});
+
+const fakeModule = (productId: string): ModuleInterface => ({
+  moduleType: ModuleType.HOT_WALLET,
+  productId,
+  productName: `Wallet ${productId}`,
+  productUrl: 'https://wallet.example',
+  productIcon: 'data:image/svg+xml,',
+  isAvailable: async () => true,
+  getAddress: vi.fn().mockResolvedValue({ address: OWNER }),
+  signTransaction: vi.fn(),
+  signAuthEntry: vi.fn(),
+  signMessage: vi.fn(),
+  getNetwork: vi.fn(),
+});
+
+const supportedIds = async (service: StellarXService) =>
+  (await service.walletsKit.getSupportedWallets()).map(wallet => wallet.id);
+
+describe('StellarXService modules', () => {
+  it('offers the built-in wallets when no extra module is configured', async () => {
+    const ids = await supportedIds(StellarXService.getInstance());
+
+    expect(ids).toContain('freighter');
+    expect(ids).toContain('hana');
+  });
+
+  it('adds configured modules next to the built-in wallets', async () => {
+    const service = StellarXService.getInstance(undefined, undefined, [fakeModule('extra-wallet')]);
+
+    const ids = await supportedIds(service);
+    expect(ids).toContain('freighter');
+    expect(ids).toContain('extra-wallet');
+  });
+
+  it('adds modules passed to a later getInstance call to the existing kit', async () => {
+    const first = StellarXService.getInstance();
+    const second = StellarXService.getInstance(undefined, undefined, [fakeModule('late-wallet')]);
+
+    expect(second).toBe(first);
+    expect(await supportedIds(first)).toContain('late-wallet');
+  });
+
+  it('lets the kit select and use a module added after construction', async () => {
+    const service = StellarXService.getInstance();
+    const mod = fakeModule('late-wallet');
+
+    expect(service.addModules([mod])).toEqual(['late-wallet']);
+    service.walletsKit.setWallet('late-wallet');
+
+    await expect(service.walletsKit.getAddress()).resolves.toEqual({ address: OWNER });
+    expect(mod.getAddress).toHaveBeenCalledTimes(1);
+  });
+
+  it('skips a module whose productId is already present', async () => {
+    const service = StellarXService.getInstance(undefined, undefined, [fakeModule('extra-wallet')]);
+
+    expect(service.addModules([fakeModule('extra-wallet'), fakeModule('hana')])).toEqual([]);
+    expect((await supportedIds(service)).filter(id => id === 'extra-wallet' || id === 'hana')).toEqual([
+      'hana',
+      'extra-wallet',
+    ]);
+  });
+
+  it('removes modules by productId so the kit no longer lists or selects them', async () => {
+    const service = StellarXService.getInstance(undefined, undefined, [fakeModule('extra-wallet')]);
+
+    expect(service.removeModules(['extra-wallet', 'unknown'])).toEqual(['extra-wallet']);
+    expect(await supportedIds(service)).not.toContain('extra-wallet');
+    expect(() => service.walletsKit.setWallet('extra-wallet')).toThrow('not supported');
   });
 });

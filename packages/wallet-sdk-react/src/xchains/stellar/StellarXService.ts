@@ -1,5 +1,10 @@
 import { XService } from '@/core/XService.js';
-import { StellarWalletsKit, WalletNetwork, allowAllModules } from '@creit.tech/stellar-wallets-kit';
+import {
+  StellarWalletsKit,
+  WalletNetwork,
+  allowAllModules,
+  type ModuleInterface,
+} from '@creit.tech/stellar-wallets-kit';
 import * as StellarSdk from '@stellar/stellar-sdk';
 import CustomSorobanServer from './CustomSorobanServer.js';
 import { getTokenBalance, getTrustlineBalances, parseStellarAmount } from './utils.js';
@@ -49,19 +54,34 @@ export class StellarXService extends XService {
   public server: StellarSdk.Horizon.Server;
   public sorobanServer: CustomSorobanServer;
 
+  /**
+   * The kit's module list. The kit keeps this array by reference and reads it on every call, so modules added or
+   * removed here are seen by `getSupportedWallets()` and `setWallet()` without rebuilding the kit.
+   */
+  private readonly modules: ModuleInterface[];
+
   private constructor(horizonRpcUrl?: string, sorobanRpcUrl?: string) {
     super('STELLAR');
 
+    this.modules = allowAllModules();
     this.walletsKit = new StellarWalletsKit({
       network: WalletNetwork.PUBLIC,
-      modules: allowAllModules(),
+      modules: this.modules,
     });
 
     this.server = new StellarSdk.Horizon.Server(horizonRpcUrl ?? STELLAR_DEFAULT_HORIZON_RPC_URL, { allowHttp: true });
     this.sorobanServer = new CustomSorobanServer(sorobanRpcUrl ?? STELLAR_DEFAULT_SOROBAN_RPC_URL, {});
   }
 
-  public static getInstance(horizonRpcUrl?: string, sorobanRpcUrl?: string): StellarXService {
+  /**
+   * @param modules - Extra Stellar Wallets Kit modules (`config.STELLAR.modules`). Added on every call, so a remount
+   *   with new modules reaches the existing singleton; one whose `productId` is already present is ignored.
+   */
+  public static getInstance(
+    horizonRpcUrl?: string,
+    sorobanRpcUrl?: string,
+    modules?: readonly ModuleInterface[],
+  ): StellarXService {
     if (!StellarXService.instance) {
       StellarXService.instance = new StellarXService(horizonRpcUrl, sorobanRpcUrl);
     } else {
@@ -72,7 +92,39 @@ export class StellarXService extends XService {
         StellarXService.instance.sorobanServer = new CustomSorobanServer(sorobanRpcUrl, {});
       }
     }
+    if (modules?.length) StellarXService.instance.addModules(modules);
     return StellarXService.instance;
+  }
+
+  /**
+   * Adds Stellar Wallets Kit modules to the kit. A module whose `productId` is already present is skipped.
+   * Does not refresh the connector list — use `addStellarWalletModules` for that.
+   * @returns The `productId`s that were added.
+   */
+  public addModules(modules: readonly ModuleInterface[]): string[] {
+    const added: string[] = [];
+    for (const mod of modules) {
+      if (this.modules.some(existing => existing.productId === mod.productId)) continue;
+      this.modules.push(mod);
+      added.push(mod.productId);
+    }
+    return added;
+  }
+
+  /**
+   * Removes Stellar Wallets Kit modules by `productId`. Built-in modules can be removed too.
+   * Does not refresh the connector list — use `removeStellarWalletModules` for that.
+   * @returns The `productId`s that were removed.
+   */
+  public removeModules(productIds: readonly string[]): string[] {
+    const removed: string[] = [];
+    for (let i = this.modules.length - 1; i >= 0; i--) {
+      const productId = this.modules[i]?.productId;
+      if (productId === undefined || !productIds.includes(productId)) continue;
+      this.modules.splice(i, 1);
+      removed.push(productId);
+    }
+    return removed;
   }
 
   /**

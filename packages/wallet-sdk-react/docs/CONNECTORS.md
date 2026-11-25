@@ -13,6 +13,7 @@ Concrete connector and service classes are **not** exported from the package bar
 5. [Discovery — EIP-6963 vs adapter vs window probe](#discovery--eip-6963-vs-adapter-vs-window-probe)
 6. [`sortConnectors` — display ordering](#sortconnectors--display-ordering)
 7. [Custom connectors](#custom-connectors)
+8. [Extra Stellar Wallets Kit modules](#extra-stellar-wallets-kit-modules)
 
 ---
 
@@ -103,7 +104,7 @@ The `package.json` `exports` field maps `./xchains/*` to `./dist/xchains/*/index
 | `@sodax/wallet-sdk-react/xchains/solana` | `SolanaXService`, `SolanaXConnector` |
 | `@sodax/wallet-sdk-react/xchains/sui` | `SuiXService`, `SuiXConnector` |
 | `@sodax/wallet-sdk-react/xchains/bitcoin` | `BitcoinXService`, `BitcoinXConnector`, `UnisatXConnector`, `XverseXConnector`, `OKXXConnector`, `BitcoinHanaXConnector`, `useBitcoinXConnectors`, type `BtcWalletAddressType` |
-| `@sodax/wallet-sdk-react/xchains/stellar` | `StellarXService`, `StellarWalletsKitXConnector` |
+| `@sodax/wallet-sdk-react/xchains/stellar` | `StellarXService`, `StellarWalletsKitXConnector`, `addStellarWalletModules`, `removeStellarWalletModules` |
 | `@sodax/wallet-sdk-react/xchains/injective` | `InjectiveXService`, `InjectiveXConnector` |
 | `@sodax/wallet-sdk-react/xchains/icon` | `IconXService`, `IconHanaXConnector`, `CHAIN_INFO`, `SupportedChainId` |
 | `@sodax/wallet-sdk-react/xchains/near` | `NearXService`, `NearXConnector` |
@@ -141,7 +142,7 @@ Connectors land in the store via three discovery patterns:
 
 **Synchronous default list** (most chains) — `chainRegistry.<CHAIN>.defaultConnectors()` returns a static array at `initChainServices()` time. Bitcoin always registers Unisat + Xverse + OKX + Hana; Injective registers MetaMask + Keplr + Leap.
 
-**Async discovery** — Stellar's connectors come from `walletsKit.getSupportedWallets()` which probes for installed Stellar wallets at runtime. Implemented via `chainRegistry.STELLAR.discoverConnectors`, called as a side-effect during init.
+**Async discovery** — Stellar's connectors come from `walletsKit.getSupportedWallets()` which probes for installed Stellar wallets at runtime. Implemented via `chainRegistry.STELLAR.discoverConnectors`, called as a side-effect during init and again whenever Stellar Wallets Kit modules are added or removed after mount ([below](#extra-stellar-wallets-kit-modules)).
 
 **Native SDK adapter** — EVM, Solana, Sui delegate to wagmi / wallet-adapter / dapp-kit. The adapter discovers wallets via EIP-6963 announcements (EVM) or vendor-specific extension protocols, and the chain's Hydrator reads the discovered list and writes it to the store.
 
@@ -220,6 +221,37 @@ The `connectors` field is read only for chain types whose [`chainRegistry.ts`](h
 EVM, Solana and Sui are provider-managed and ignore the field: `createChainServices` skips the override branch for them, and each chain's Hydrator overwrites the store's connector list from wagmi / wallet-adapter / dapp-kit, so a connector passed there never reaches `useXConnectors`. Register an EVM wallet through wagmi instead — the `walletConnect` slot field, a custom wagmi connector, or `privy` for Privy email login ([`WALLET_PRIVY.md`](./WALLET_PRIVY.md)). A connector's `isAuthorized()` decides whether wagmi restores it on reload: it must never throw (wagmi does not catch it) and must answer quickly without waiting on a slow SDK.
 
 Bitcoin adds a second class gate: `useBitcoinXConnectors`, the registry's `signMessage`, and its wallet-provider lookup all narrow with `instanceof BitcoinXConnector`, so a Bitcoin connector must extend that subclass. Once that gate passes, `chainRegistry` resolves the connector's `IBitcoinWalletProvider` — `getWalletProvider()`, falling back to `recreateWalletProvider(xAccount)` — picks the signing scheme by address type, and runs the `hasSignBip322` / `hasSignEcdsa` boolean checks against **that provider**. A custom connector therefore has to return a provider implementing `signBip322Message` and `signEcdsaMessage`; defining them on the connector itself is never consulted.
+
+For Stellar the `connectors` field is not the way in: its connector list comes from the Stellar Wallets Kit's discovery, which replaces whatever the field set. Add a Stellar Wallets Kit module instead ([below](#extra-stellar-wallets-kit-modules)).
+
+---
+
+## Extra Stellar Wallets Kit modules
+
+Stellar's connectors are the Stellar Wallets Kit's wallets (`allowAllModules()`) that report themselves available. To offer another wallet, pass its kit module — any object implementing the kit's `ModuleInterface` — in `STELLAR.modules`:
+
+```typescript
+const config: SodaxWalletConfig = {
+  STELLAR: {
+    modules: [new MyWalletModule()],
+  },
+};
+```
+
+It appears in `useXConnectors({ xChainType: 'STELLAR' })` with its `productId` as the connector id and its `productName` and `productIcon`, and connects, signs and reconnects after a reload like the built-in wallets. A module whose `productId` is already present (for example a built-in one) is ignored.
+
+When a wallet is only known after `SodaxWalletProvider` has mounted (a setting fetched at run time, a wallet that loads later), add or remove it with the functions from `@sodax/wallet-sdk-react/xchains/stellar`:
+
+```typescript
+import { addStellarWalletModules, removeStellarWalletModules } from '@sodax/wallet-sdk-react/xchains/stellar';
+
+await addStellarWalletModules([new MyWalletModule()]); // listed in useXConnectors once available
+await removeStellarWalletModules(['my-wallet']); // by productId; clears a Stellar connection that used it
+```
+
+Both refresh the Stellar connector list. The kit gives each module 500 ms to answer `isAvailable()`, so add a module once it can answer `true`; calling `addStellarWalletModules` again refreshes the list. If the persisted Stellar connection belongs to a module added this way, it is restored as on mount. Removing a module does not sign the user out of that wallet: end its session through the wallet itself.
+
+When a wallet call fails, `StellarWalletProvider` throws a `StellarWalletError` whose `cause` is the module's own error (`{ code, message, ext? }`), so its code — for example `4001` when the user rejects — reaches your error handling.
 
 ---
 

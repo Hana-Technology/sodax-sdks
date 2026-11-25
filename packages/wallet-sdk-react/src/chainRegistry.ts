@@ -30,8 +30,9 @@ import { getEntryDefaults, getRpcUrl } from './utils/walletRpcConfig.js';
 import { EvmXService } from './xchains/evm/index.js';
 import { SolanaXService } from './xchains/solana/SolanaXService.js';
 import { SuiXService } from './xchains/sui/index.js';
-import { StellarXService, StellarWalletsKitXConnector } from './xchains/stellar/index.js';
-import type { StellarWalletType } from './xchains/stellar/StellarWalletsKitXConnector.js';
+// Direct file imports: the stellar sub-path index also exports the module actions, which import this registry.
+import { StellarXService } from './xchains/stellar/StellarXService.js';
+import { StellarWalletsKitXConnector, type StellarWalletType } from './xchains/stellar/StellarWalletsKitXConnector.js';
 import { IconXService, CHAIN_INFO, SupportedChainId } from './xchains/icon/index.js';
 import { IconHanaXConnector } from './xchains/icon/IconHanaXConnector.js';
 import { InjectiveXConnector, InjectiveXService } from './xchains/injective/index.js';
@@ -149,6 +150,9 @@ function readConnectorsOverride(
 function hasChainOfType(chainType: ChainType, walletConfig: SodaxWalletConfig): boolean {
   return walletConfig[chainType] !== undefined;
 }
+
+/** Incremented by every Stellar discovery run; a run stops writing once a later one has started. */
+let stellarDiscoveryRun = 0;
 
 // ─── Default Actions Helper ─────────────────────────────────────────────────
 
@@ -287,7 +291,11 @@ export const chainRegistry: Record<string, ChainServiceFactory> = {
   STELLAR: defineChain({
     createService: walletConfig => {
       const stellarRpc = walletConfig?.STELLAR?.chains?.[ChainKeys.STELLAR_MAINNET];
-      return StellarXService.getInstance(stellarRpc?.horizonRpcUrl, stellarRpc?.sorobanRpcUrl);
+      return StellarXService.getInstance(
+        stellarRpc?.horizonRpcUrl,
+        stellarRpc?.sorobanRpcUrl,
+        walletConfig?.STELLAR?.modules,
+      );
     },
     displayName: 'Stellar',
     defaultConnectors: () => [],
@@ -296,12 +304,16 @@ export const chainRegistry: Record<string, ChainServiceFactory> = {
       // Hana Stellar injects window.hanaWallet.stellar lazily (sometimes after init).
       // The kit has no event API, so poll a few times with backoff so the connector
       // list catches up without forcing a refresh. Stop early once the id set stays
-      // stable across consecutive iterations.
+      // stable across consecutive iterations. Runs again whenever modules are added
+      // or removed after mount (addStellarWalletModules / removeStellarWalletModules);
+      // only the latest run writes, so an older run's list never replaces a newer one.
       const STELLAR_DISCOVER_DELAYS_MS = [0, 100, 500] as const;
+      const run = ++stellarDiscoveryRun;
       let lastIds = '';
       for (const delay of STELLAR_DISCOVER_DELAYS_MS) {
         if (delay) await new Promise(r => setTimeout(r, delay));
         const wallets = await service.walletsKit.getSupportedWallets();
+        if (run !== stellarDiscoveryRun) return; // superseded by a later run
         const connectors = wallets
           .filter((w: StellarWalletType) => w.isAvailable)
           .map((w: StellarWalletType) => new StellarWalletsKitXConnector(w));
