@@ -39,12 +39,20 @@ const STELLAR_ERROR_CODES = {
   INVALID_PRIVATE_KEY: 'INVALID_PRIVATE_KEY',
 } as const;
 
+/**
+ * Error thrown by {@link StellarWalletProvider}.
+ *
+ * When a wallet call fails, `cause` holds what the wallet threw, unchanged. Stellar Wallets Kit modules reject with a
+ * plain `{ code, message, ext? }` object rather than an `Error`, so the wallet's own code (e.g. `4001` for a user
+ * rejection) and message are only available there; `message` and `code` keep their generic values.
+ */
 export class StellarWalletError extends Error {
   constructor(
     message: string,
     public readonly code: keyof typeof STELLAR_ERROR_CODES,
+    options?: ErrorOptions,
   ) {
-    super(message);
+    super(message, options);
     this.name = 'StellarWalletError';
   }
 }
@@ -130,13 +138,14 @@ export class StellarWalletProvider extends BaseWalletProvider<StellarWalletDefau
       throw new StellarWalletError(
         error instanceof Error ? error.message : 'Failed to get wallet address',
         'INVALID_CONFIG',
+        { cause: error },
       );
     }
   }
 
   /**
    * Signs the given XDR-encoded transaction and returns the signed XDR.
-   * @throws {StellarWalletError} with code `SIGN_TX_ERROR` if signing fails.
+   * @throws {StellarWalletError} with code `SIGN_TX_ERROR` if signing fails; `cause` holds the wallet's own error.
    */
   public async signTransaction(tx: XDR, options?: { address?: string }): Promise<XDR> {
     try {
@@ -165,6 +174,7 @@ export class StellarWalletProvider extends BaseWalletProvider<StellarWalletDefau
       throw new StellarWalletError(
         error instanceof Error ? error.message : 'Failed to sign transaction',
         'SIGN_TX_ERROR',
+        { cause: error },
       );
     }
   }

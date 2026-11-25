@@ -191,6 +191,11 @@ const stellarBrowser = new StellarWalletProvider({
 });
 ```
 
+When the wallet refuses or fails a call, `getWalletAddress` and `signTransaction` throw a `StellarWalletError` whose
+`cause` is what the wallet threw, unchanged. Stellar Wallets Kit modules reject with a plain `{ code, message, ext? }`
+object, so read the wallet's own code there (for example `4001` when the user rejects); the error's `message` and
+`code` stay generic (`'Failed to sign transaction'`, `SIGN_TX_ERROR`).
+
 ### Stacks
 
 Stacks discriminates by field presence (no `type` field). The private-key config has `privateKey`; the browser-extension config has `address` (and optionally a `StacksProvider`).

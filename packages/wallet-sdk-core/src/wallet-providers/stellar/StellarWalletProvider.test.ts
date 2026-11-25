@@ -86,6 +86,55 @@ describe('StellarWalletProvider — signer selection', () => {
   });
 });
 
+describe('StellarWalletProvider — wallet errors', () => {
+  // Stellar Wallets Kit modules reject with a plain `{ code, message, ext }` object, not an Error.
+  const walletError = { code: 4001, message: 'User rejected the request', ext: ['user_rejected'] };
+
+  it('keeps the wallet error as `cause` when signing fails, with the same message and code as before', async () => {
+    const provider = new StellarWalletProvider({
+      type: 'BROWSER_EXTENSION',
+      walletsKit: { getAddress: vi.fn(), signTransaction: vi.fn().mockRejectedValue(walletError) },
+      network: 'PUBLIC',
+    });
+
+    const error = await provider.signTransaction('xdr').catch(e => e);
+
+    expect(error).toBeInstanceOf(StellarWalletError);
+    expect(error.message).toBe('Failed to sign transaction');
+    expect(error.code).toBe('SIGN_TX_ERROR');
+    expect(error.cause).toBe(walletError);
+  });
+
+  it('keeps an Error thrown by the wallet as `cause` and its message, as before', async () => {
+    const thrown = new Error('Wallet locked');
+    const provider = new StellarWalletProvider({
+      type: 'BROWSER_EXTENSION',
+      walletsKit: { getAddress: vi.fn(), signTransaction: vi.fn().mockRejectedValue(thrown) },
+      network: 'PUBLIC',
+    });
+
+    const error = await provider.signTransaction('xdr').catch(e => e);
+
+    expect(error.message).toBe('Wallet locked');
+    expect(error.cause).toBe(thrown);
+  });
+
+  it('keeps the wallet error as `cause` when reading the address fails', async () => {
+    const provider = new StellarWalletProvider({
+      type: 'BROWSER_EXTENSION',
+      walletsKit: { getAddress: vi.fn().mockRejectedValue(walletError), signTransaction: vi.fn() },
+      network: 'PUBLIC',
+    });
+
+    const error = await provider.getWalletAddress().catch(e => e);
+
+    expect(error).toBeInstanceOf(StellarWalletError);
+    expect(error.message).toBe('Failed to get wallet address');
+    expect(error.code).toBe('INVALID_CONFIG');
+    expect(error.cause).toBe(walletError);
+  });
+});
+
 describe('StellarWalletProvider', () => {
   describe('constructor', () => {
     it('initializes with private-key config', () => {
