@@ -109,4 +109,15 @@ describe('removeStellarWalletModules', () => {
     expect(stellarConnectorIds()).toContain('other-wallet');
     expect(useXWalletStore.getState().xConnections.STELLAR?.xConnectorId).toBe('other-wallet');
   });
+
+  it('clears a persisted connection to a module that was never added', async () => {
+    useXWalletStore.getState().setXConnection('STELLAR', {
+      xAccount: { address: ADDRESS, xChainType: 'STELLAR' },
+      xConnectorId: 'late-wallet',
+    });
+
+    await removeStellarWalletModules(['late-wallet']);
+
+    expect(useXWalletStore.getState().xConnections.STELLAR).toBeUndefined();
+  });
 });

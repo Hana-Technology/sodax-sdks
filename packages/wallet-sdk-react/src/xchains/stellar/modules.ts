@@ -37,15 +37,16 @@ export async function addStellarWalletModules(modules: readonly ModuleInterface[
 
 /**
  * Removes Stellar Wallets Kit modules by `productId` and refreshes the Stellar connector list, so they disappear from
- * `useXConnectors`. When the Stellar connection uses a removed module, the connection is cleared; the module's own
- * session is left to its owner (call the wallet's own sign-out if it has one).
+ * `useXConnectors`. When the Stellar connection uses one of `productIds`, the connection is cleared, also when that
+ * module was never added on this page load (a connection persisted from an earlier visit to a wallet the host no
+ * longer offers); the module's own session is left to its owner (call the wallet's own sign-out if it has one).
  */
 export async function removeStellarWalletModules(productIds: readonly string[]): Promise<void> {
-  const removed = StellarXService.getInstance().removeModules(productIds);
+  StellarXService.getInstance().removeModules(productIds);
 
   const store = useXWalletStore.getState();
   const connection = store.xConnections.STELLAR;
-  if (connection && removed.includes(connection.xConnectorId)) {
+  if (connection && productIds.includes(connection.xConnectorId)) {
     store.unsetXConnection('STELLAR');
   }
 
